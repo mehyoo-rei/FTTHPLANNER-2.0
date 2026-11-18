@@ -585,6 +585,37 @@
       '<div class="loss-note">Sa budget, gigamit ang taas nga bahin sa range (conservative). Ang 1:8 equal kay 10.6 dB matag port.</div></details>';
   }
 
+  // ONU / router Rx reading status (GPON: sensitivity from settings, overload above -8 dBm)
+  function onuStatus(rx){
+    if(typeof rx !== 'number' || isNaN(rx)) return null;
+    if(rx > -8) return 'warn';
+    if(rx >= settings.minRx + settings.margin) return 'pass';
+    if(rx >= settings.minRx) return 'warn';
+    return 'fail';
+  }
+  function onuReadoutHtml(n, tr){
+    var out = '';
+    var has = (typeof n.onuRx === 'number' && !isNaN(n.onuRx));
+    if(has){
+      var st = onuStatus(n.onuRx);
+      var label = st === 'pass' ? 'PASS' : (st === 'fail' ? 'FAIL (ubos sa sensitivity)' : (n.onuRx > -8 ? 'MASYADONG TAAS (overload)' : 'WARN (hapit na sa limit)'));
+      var col = st === 'pass' ? '#3ecf7e' : (st === 'fail' ? '#ef5b6f' : '#f2a93b');
+      out += 'Actual Rx: <b style="color:'+col+'">' + fmtDbm(n.onuRx) + ' dBm</b> &middot; ' + label;
+    } else {
+      out += 'Wala pa gi-type ang actual reading.';
+    }
+    var bd = nodeBudget(n, tr);
+    if(bd){
+      out += '<br>Expected (planner): <b>' + fmtDbm(bd.rx) + ' dBm</b>';
+      if(has){
+        var d = n.onuRx - bd.rx;
+        out += '<br>Diperensya: <b>' + (d >= 0 ? '+' : '') + d.toFixed(1) + ' dB</b>' + (d < -3 ? ' (mas ubos kay sa plano, susiha ang splice/konektor)' : '');
+      }
+    } else {
+      out += '<br>Wala pa konektado sa OLT, mao nga walay expected nga reading.';
+    }
+    return out;
+  }
   var PALETTE = ['#17c3b2','#f2a93b','#8b7cf6','#5aa9ff','#ef5b6f','#3ecf7e'];
 
   function uid(prefix){ return prefix + '_' + Math.random().toString(36).slice(2,9); }
@@ -702,6 +733,7 @@
       cassetteRatio: type==='cassette' ? (document.getElementById('buildCasRatio') && document.getElementById('buildCasRatio').value ? document.getElementById('buildCasRatio').value : '1:8') : undefined,
       portMode: type==='splitter' ? (document.getElementById('buildFbtPort') ? document.getElementById('buildFbtPort').value : 'tap') : (type==='cassette' ? (document.getElementById('buildCasPort') ? document.getElementById('buildCasPort').value : 'tap') : undefined),
       customer: type==='drop' ? '' : undefined,
+      onuDevice: type==='drop' ? 'ONU' : undefined,
     };
     if(type==='splitter'){
       var ivEl = document.getElementById('buildFbtInput');
@@ -923,7 +955,13 @@
       var bc = nodeBudget(n, trace);
       return bc ? '#ec4899' : '#6c7889';
     }
-    if(n.type==='drop') return '#8b7cf6';
+    if(n.type==='drop'){
+      var dst = onuStatus(n.onuRx);
+      if(dst === 'pass') return '#3ecf7e';
+      if(dst === 'warn') return '#f2a93b';
+      if(dst === 'fail') return '#ef5b6f';
+      return '#8b7cf6';
+    }
     return '#6c7889';
   }
 
@@ -1035,8 +1073,13 @@
         badge = '<span class="topo-pill none">No link</span>';
       }
     } else if(n.type==='drop'){
-      sub = n.customer ? n.customer : 'Unassigned';
-      badge = n.customer ? '<span class="topo-pill online">Connected</span>' : '<span class="topo-pill none">Planned</span>';
+      sub = (n.customer ? n.customer : 'Unassigned') + ' · ' + (n.onuDevice || 'ONU');
+      var dst = onuStatus(n.onuRx);
+      if(dst){
+        badge = '<span class="topo-pill '+dst+'">'+fmtDbm(n.onuRx)+' dBm</span>';
+      } else {
+        badge = n.customer ? '<span class="topo-pill online">Connected</span>' : '<span class="topo-pill none">Planned</span>';
+      }
     }
     return '<div class="topo-card" data-nodeid="'+n.id+'">' +
       '<div class="topo-ic" style="background:'+color+'22;color:'+color+';border-color:'+color+'55;">'+topoCardLetter(n.type)+'</div>' +
@@ -1176,6 +1219,11 @@
             badge = '<span class="badge '+(b?'none':'none')+'">'+(b?b.rx.toFixed(1)+' dBm':'no link')+'</span>';
           }
         }
+        if(n.type==='drop'){
+          meta = n.onuDevice || 'ONU';
+          var dst2 = onuStatus(n.onuRx);
+          badge = dst2 ? '<span class="badge '+dst2+'">'+fmtDbm(n.onuRx)+' dBm</span>' : '<span class="badge none">no reading</span>';
+        }
         html += '<div class="obj-item" data-nodeid="'+n.id+'"><div class="obj-dot" style="background:'+color+'"></div>' +
           '<div class="obj-name">'+escapeHtml(n.name)+'</div><div class="obj-meta">'+meta+'</div>'+badge+'</div>';
       });
@@ -1294,6 +1342,12 @@
       }
       if(n.type==='drop'){
         html += fieldText('nCustomer','Customer / subscriber', n.customer||'');
+        var curDev = n.onuDevice || 'ONU';
+        html += '<div class="field-row"><label>Device sa customer</label><select id="nOnuDevice">' +
+          ['ONU','ONU + Router','Router'].map(function(d){ return '<option value="'+d+'"'+(curDev===d?' selected':'')+'>'+d+'</option>'; }).join('') +
+          '</select></div>';
+        html += '<div class="field-row"><label>ONU / Router Rx reading (dBm)</label><input type="number" id="nOnuRx" step="0.1" placeholder="e.g. -21.5" value="' + (typeof n.onuRx === 'number' ? n.onuRx : '') + '"></div>';
+        html += '<div class="ratio-readout" id="nOnuReadout" style="margin-bottom:12px;">' + onuReadoutHtml(n, tr) + '</div>';
       }
       html += '<div class="field-row"><label>Notes</label><textarea id="nNotes">'+escapeHtml(n.notes||'')+'</textarea></div>';
       html += '<div class="btn-row"><button class="btn-secondary" id="btnFlyTo">Center map</button><button class="btn-danger" id="btnDeleteNode">Delete</button></div>';
@@ -1324,7 +1378,21 @@
         bindLiveSelect('nCassetteRatio', function(v){ n.cassetteRatio=v; if(v==='1:8') n.portMode='tap'; renderAll(); scheduleSave(); });
         bindLiveSelect('nPortMode', function(v){ n.portMode=v; renderAll(); scheduleSave(); });
       }
-      if(n.type==='drop') bindLive('nCustomer', function(v){ n.customer=v; scheduleSave(); });
+      if(n.type==='drop'){
+        bindLive('nCustomer', function(v){ n.customer=v; scheduleSave(); });
+        bindLiveSelect('nOnuDevice', function(v){ n.onuDevice=v; renderAll(); scheduleSave(); });
+        var onuEl = document.getElementById('nOnuRx');
+        if(onuEl){
+          onuEl.addEventListener('input', function(){
+            var v = parseFloat(onuEl.value);
+            if(isNaN(v)) delete n.onuRx; else n.onuRx = v;
+            var rd = document.getElementById('nOnuReadout');
+            if(rd) rd.innerHTML = onuReadoutHtml(n, computeTrace());
+            scheduleSave();
+          });
+          onuEl.addEventListener('change', function(){ renderAll(); });
+        }
+      }
       bindLive('nNotes', function(v){ n.notes=v; scheduleSave(); });
       document.getElementById('btnFlyTo').onclick = function(){ map.flyTo([n.lat,n.lng], Math.max(map.getZoom(),17)); };
       document.getElementById('btnDeleteNode').onclick = function(){ deleteNode(id); };
@@ -1530,13 +1598,15 @@
 
   function exportCsv(){
     var tr = computeTrace();
-    var rows = [['Name','Type','Lat','Lng','Split Ratio','OLT','Distance (km)','Splices','Rx (dBm)','Status','Notes']];
+    var rows = [['Name','Type','Lat','Lng','Split Ratio','OLT','Distance (km)','Splices','Rx (dBm)','Status','Notes','Customer','Device','ONU Rx (dBm)','ONU Status']];
     Object.values(state.nodes).forEach(function(n){
       var b = (n.type==='nap' || n.type==='splitter' || n.type==='cassette') ? nodeBudget(n, tr) : null;
       rows.push([
         n.name, n.type, n.lat.toFixed(6), n.lng.toFixed(6),
         (n.type==='nap'||n.type==='splitter'||n.type==='cassette') ? formatSplitLabel(n) : '', b?b.oltName:'', b?b.distKm.toFixed(3):'',
-        b?b.hops:'', b?b.rx.toFixed(2):'', b?b.status:'', (n.notes||'').replace(/\n/g,' ')
+        b?b.hops:'', b?b.rx.toFixed(2):'', b?b.status:'', (n.notes||'').replace(/\n/g,' '),
+        n.type==='drop' ? (n.customer||'') : '', n.type==='drop' ? (n.onuDevice||'ONU') : '',
+        (n.type==='drop' && typeof n.onuRx==='number') ? n.onuRx.toFixed(2) : '', n.type==='drop' ? (onuStatus(n.onuRx)||'') : ''
       ]);
     });
     var csv = rows.map(function(r){
