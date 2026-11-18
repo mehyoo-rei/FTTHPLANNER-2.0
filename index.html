@@ -1,0 +1,1594 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>FTTH Local Planner</title>
+<meta name="theme-color" content="#0b121b">
+<meta name="description" content="Offline-friendly FTTH network planner — plot OLTs, poles, splitters, cassettes, NAPs and customer drops on a map and check the fiber optical budget.">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg-0:#0b121b;
+    --bg-1:#101927;
+    --bg-2:#152134;
+    --bg-3:#1b2a40;
+    --border:#243040;
+    --border-soft:#1d2836;
+    --text-0:#eaeff6;
+    --text-1:#aab4c4;
+    --text-2:#6c7889;
+    --teal:#17c3b2;
+    --teal-dim:#0f4a45;
+    --amber:#f2a93b;
+    --violet:#8b7cf6;
+    --pass:#3ecf7e;
+    --warn:#f2a93b;
+    --fail:#ef5b6f;
+    --gray-line:#3a4658;
+    font-family:'IBM Plex Sans',sans-serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{height:100%;margin:0;background:var(--bg-0);color:var(--text-0);overflow:hidden;}
+  .app{display:flex;flex-direction:column;height:100vh;}
+
+  /* HEADER */
+  .hdr{
+    height:52px;flex:0 0 auto;display:flex;align-items:center;gap:10px;
+    padding:0 12px;background:var(--bg-1);border-bottom:1px solid var(--border);
+    z-index:1200;position:relative;
+  }
+  .brand{display:flex;align-items:center;gap:8px;font-weight:600;font-size:14px;white-space:nowrap;}
+  .brand .bolt{
+    width:22px;height:22px;border-radius:6px;background:linear-gradient(135deg,var(--teal),#0a8f83);
+    display:flex;align-items:center;justify-content:center;font-size:13px;color:#04211e;font-weight:700;
+  }
+  .brand-sub{font-size:10px;color:var(--text-2);font-weight:400;letter-spacing:.02em;}
+  .hdr-title{font-size:12px;color:var(--text-1);margin-left:4px;padding-left:10px;border-left:1px solid var(--border);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .hdr-spacer{flex:1;}
+  .hdr-status{font-size:11px;color:var(--text-2);white-space:nowrap;display:none;}
+  .hbtn{
+    background:transparent;border:1px solid var(--border);color:var(--text-1);
+    font-family:inherit;font-size:11.5px;padding:7px 10px;border-radius:6px;cursor:pointer;white-space:nowrap;
+  }
+  .hbtn:hover{background:var(--bg-2);color:var(--text-0);}
+  .hbtn.primary{background:var(--teal);border-color:var(--teal);color:#04211e;font-weight:600;}
+  .hbtn.primary:hover{background:#22d6c4;}
+  .menu-toggle{display:none;}
+
+  .view-tabs{display:flex;background:var(--bg-2);border:1px solid var(--border);border-radius:8px;padding:2px;gap:2px;}
+  .view-tab{
+    background:transparent;border:none;color:var(--text-2);font-family:inherit;font-size:11.5px;
+    padding:6px 12px;border-radius:6px;cursor:pointer;white-space:nowrap;
+  }
+  .view-tab.active{background:var(--teal-dim);color:var(--teal);font-weight:600;}
+
+  /* LAYOUT */
+  .main{flex:1;display:flex;min-height:0;position:relative;}
+  .sidebar{
+    width:322px;flex:0 0 auto;background:var(--bg-1);border-right:1px solid var(--border);
+    display:flex;flex-direction:column;min-height:0;z-index:900;
+  }
+  .tabs{display:flex;border-bottom:1px solid var(--border);flex:0 0 auto;}
+  .tab{
+    flex:1;text-align:center;padding:10px 4px;font-size:11.5px;color:var(--text-2);
+    cursor:pointer;border-bottom:2px solid transparent;font-weight:500;
+  }
+  .tab.active{color:var(--teal);border-bottom-color:var(--teal);}
+  .tab-body{flex:1;overflow-y:auto;padding:14px;min-height:0;}
+  .tab-body::-webkit-scrollbar{width:6px;}
+  .tab-body::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px;}
+
+  .panel-h{font-size:12.5px;font-weight:600;color:var(--text-0);margin:0 0 2px;}
+  .panel-sub{font-size:10.5px;color:var(--text-2);margin:0 0 12px;}
+
+  .tool-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:16px;}
+  .tool-btn{
+    background:var(--bg-2);border:1px solid var(--border);border-radius:8px;color:var(--text-1);
+    padding:10px 8px;font-family:inherit;font-size:11.5px;text-align:left;cursor:pointer;
+    display:flex;flex-direction:column;gap:5px;line-height:1.2;
+  }
+  .tool-btn .ic{width:16px;height:16px;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;}
+  .tool-btn:hover{border-color:var(--teal);color:var(--text-0);}
+  .tool-btn.active{background:var(--teal-dim);border-color:var(--teal);color:var(--teal);}
+  .tool-btn.full{grid-column:1 / -1;}
+
+  .hint-box{
+    background:var(--bg-2);border:1px dashed var(--teal);border-radius:8px;padding:9px 10px;
+    font-size:11px;color:var(--teal);margin-bottom:14px;display:none;align-items:center;justify-content:space-between;gap:8px;
+  }
+  .hint-box.show{display:flex;}
+  .hint-box button{background:none;border:1px solid var(--teal);color:var(--teal);border-radius:5px;font-size:10px;padding:3px 7px;cursor:pointer;font-family:inherit;}
+
+  .field-row{margin-bottom:12px;}
+  .field-row label{display:block;font-size:10.5px;color:var(--text-2);margin-bottom:5px;text-transform:uppercase;letter-spacing:.03em;}
+  .field-row input[type=text], .field-row input[type=number], .field-row select, .field-row textarea{
+    width:100%;background:var(--bg-2);border:1px solid var(--border);color:var(--text-0);
+    padding:8px 9px;border-radius:6px;font-family:inherit;font-size:12.5px;
+  }
+  .field-row textarea{resize:vertical;min-height:50px;}
+  .field-row-2{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+
+  .stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px;}
+  .stat-card{background:var(--bg-2);border:1px solid var(--border);border-radius:8px;padding:10px;}
+  .stat-card .v{font-family:'IBM Plex Mono',monospace;font-size:19px;font-weight:600;color:var(--text-0);}
+  .stat-card .l{font-size:10px;color:var(--text-2);margin-top:2px;}
+  .stat-card.pass .v{color:var(--pass);}
+  .stat-card.warn .v{color:var(--warn);}
+  .stat-card.fail .v{color:var(--fail);}
+
+  .obj-group-h{font-size:10.5px;color:var(--text-2);text-transform:uppercase;letter-spacing:.04em;margin:14px 0 6px;display:flex;justify-content:space-between;}
+  .obj-item{
+    display:flex;align-items:center;gap:8px;padding:8px 8px;border-radius:7px;cursor:pointer;margin-bottom:3px;border:1px solid transparent;
+  }
+  .obj-item:hover{background:var(--bg-2);border-color:var(--border);}
+  .obj-item.selected{background:var(--teal-dim);border-color:var(--teal);}
+  .obj-dot{width:9px;height:9px;border-radius:50%;flex:0 0 auto;}
+  .obj-name{font-size:12px;color:var(--text-0);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .obj-meta{font-size:10px;color:var(--text-2);font-family:'IBM Plex Mono',monospace;flex:0 0 auto;}
+  .badge{font-size:9px;padding:2px 6px;border-radius:10px;font-weight:600;font-family:'IBM Plex Mono',monospace;flex:0 0 auto;}
+  .badge.pass{background:rgba(62,207,126,.15);color:var(--pass);}
+  .badge.warn{background:rgba(242,169,59,.15);color:var(--warn);}
+  .badge.fail{background:rgba(239,91,111,.15);color:var(--fail);}
+  .badge.none{background:rgba(108,120,137,.15);color:var(--text-2);}
+
+  .empty-note{font-size:11.5px;color:var(--text-2);padding:14px 4px;text-align:center;}
+
+  .inspector-empty{text-align:center;padding:40px 10px;color:var(--text-2);font-size:12px;}
+  .inspector-empty .ic-big{font-size:26px;margin-bottom:8px;opacity:.6;}
+  .insp-head{display:flex;align-items:center;gap:8px;margin-bottom:14px;}
+  .insp-type-badge{font-size:9.5px;padding:3px 8px;border-radius:5px;font-weight:700;letter-spacing:.03em;text-transform:uppercase;}
+  .btn-row{display:flex;gap:8px;margin-top:16px;}
+  .btn-danger{
+    flex:1;background:rgba(239,91,111,.1);border:1px solid var(--fail);color:var(--fail);
+    padding:9px;border-radius:6px;font-family:inherit;font-size:12px;cursor:pointer;font-weight:500;
+  }
+  .btn-danger:hover{background:rgba(239,91,111,.2);}
+  .btn-secondary{
+    flex:1;background:var(--bg-2);border:1px solid var(--border);color:var(--text-1);
+    padding:9px;border-radius:6px;font-family:inherit;font-size:12px;cursor:pointer;
+  }
+  .db-readout{
+    background:var(--bg-2);border:1px solid var(--border);border-radius:8px;padding:12px;margin-top:6px;
+  }
+  .db-readout .big{font-family:'IBM Plex Mono',monospace;font-size:24px;font-weight:600;}
+  .db-readout .path{font-size:10.5px;color:var(--text-2);margin-top:6px;line-height:1.5;}
+
+  /* MAP */
+  .map-wrap{flex:1;position:relative;min-width:0;}
+  #map{width:100%;height:100%;background:#0b121b;}
+  .leaflet-container{font-family:'IBM Plex Sans',sans-serif;background:#0b121b;}
+
+  /* TOPOLOGY VIEW */
+  #topoContainer{position:absolute;inset:0;display:none;background:var(--bg-0);}
+  .topo-layout{display:flex;height:100%;min-height:0;}
+  .topo-side{width:240px;flex:0 0 auto;border-right:1px solid var(--border);background:var(--bg-1);padding:14px;overflow-y:auto;}
+  .topo-side-h{font-size:10.5px;color:var(--text-2);text-transform:uppercase;letter-spacing:.04em;margin:0 0 8px;}
+  .topo-olt-chip{
+    display:flex;align-items:center;gap:8px;padding:9px 10px;border-radius:8px;border:1px solid var(--border);
+    background:var(--bg-2);cursor:pointer;margin-bottom:6px;
+  }
+  .topo-olt-chip.active{border-color:var(--teal);background:var(--teal-dim);}
+  .topo-olt-chip .dot{width:7px;height:7px;border-radius:50%;background:var(--teal);flex:0 0 auto;}
+  .topo-olt-chip .nm{font-size:12px;color:var(--text-0);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .topo-summary{background:var(--bg-2);border:1px solid var(--border);border-radius:9px;padding:12px;margin-top:14px;}
+  .topo-summary-row{display:flex;justify-content:space-between;padding:5px 0;font-size:11.5px;border-bottom:1px solid var(--border-soft);}
+  .topo-summary-row:last-child{border-bottom:none;}
+  .topo-summary-row .k{color:var(--text-2);}
+  .topo-summary-row .v{color:var(--text-0);font-family:'IBM Plex Mono',monospace;}
+
+  .topo-main{flex:1;display:flex;flex-direction:column;min-width:0;min-height:0;}
+  .topo-panel-hdr{
+    display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid var(--border);flex:0 0 auto;
+  }
+  .topo-panel-title{font-size:13px;font-weight:600;color:var(--text-0);}
+  .live-badge{
+    font-size:9.5px;background:rgba(62,207,126,.15);color:var(--pass);padding:2px 8px;border-radius:10px;
+    font-weight:700;letter-spacing:.03em;display:flex;align-items:center;gap:4px;
+  }
+  .live-badge .d{width:5px;height:5px;border-radius:50%;background:var(--pass);animation:pulse 1.6s infinite;}
+  @keyframes pulse{0%,100%{opacity:1;}50%{opacity:.35;}}
+  .topo-panel-meta{font-size:10.5px;color:var(--text-2);flex:1;}
+  .topo-tool{
+    background:var(--bg-2);border:1px solid var(--border);color:var(--text-1);border-radius:6px;
+    font-family:inherit;font-size:11px;padding:6px 10px;cursor:pointer;
+  }
+  .topo-tool:hover{border-color:var(--teal);color:var(--teal);}
+
+  .topo-canvas{flex:1;overflow:auto;padding:20px 24px 60px;}
+  .topo-node-block{display:flex;flex-direction:column;}
+  .topo-card{
+    display:flex;align-items:center;gap:9px;background:var(--bg-2);border:1px solid var(--border);
+    border-radius:9px;padding:8px 10px;cursor:pointer;max-width:340px;
+  }
+  .topo-card:hover{border-color:var(--teal);}
+  .topo-ic{
+    width:26px;height:26px;border-radius:6px;border:1px solid;display:flex;align-items:center;justify-content:center;
+    font-family:'IBM Plex Mono',monospace;font-size:9px;font-weight:700;flex:0 0 auto;
+  }
+  .topo-card-txt{flex:1;min-width:0;}
+  .topo-card-name{font-size:12px;color:var(--text-0);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .topo-card-sub{font-size:10px;color:var(--text-2);margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .topo-pill{font-size:9px;padding:2px 7px;border-radius:9px;font-weight:700;font-family:'IBM Plex Mono',monospace;flex:0 0 auto;white-space:nowrap;}
+  .topo-pill.pass{background:rgba(62,207,126,.15);color:var(--pass);}
+  .topo-pill.warn{background:rgba(242,169,59,.15);color:var(--warn);}
+  .topo-pill.fail{background:rgba(239,91,111,.15);color:var(--fail);}
+  .topo-pill.info{background:rgba(56,189,248,.15);color:#38bdf8;}
+  .topo-pill.online{background:rgba(23,195,178,.15);color:var(--teal);}
+  .topo-pill.none{background:rgba(108,120,137,.15);color:var(--text-2);}
+
+  .topo-children{margin-left:33px;padding-left:20px;border-left:1px dashed var(--border);margin-top:8px;display:flex;flex-direction:column;gap:12px;}
+  .topo-branch{position:relative;}
+  .topo-cable-label{
+    font-size:9.5px;color:var(--text-2);font-family:'IBM Plex Mono',monospace;margin:0 0 5px 2px;
+  }
+  .topo-empty{color:var(--text-2);font-size:12.5px;text-align:center;padding:60px 20px;}
+
+  .topo-focus .sidebar{display:none;}
+  .topo-focus .topo-side{display:none;}
+
+  /* STATUS FOOTER */
+  .status-footer{
+    flex:0 0 auto;height:26px;background:var(--bg-1);border-top:1px solid var(--border);
+    display:flex;align-items:center;gap:16px;padding:0 14px;font-size:10px;color:var(--text-2);
+  }
+  .status-footer .sf-item{display:flex;align-items:center;gap:5px;white-space:nowrap;}
+  .status-footer .sf-dot{width:6px;height:6px;border-radius:50%;background:var(--pass);}
+  .status-footer .sf-dot.warn{background:var(--warn);}
+  .status-footer .sf-spacer{flex:1;}
+  .status-footer .sf-brand{font-family:'IBM Plex Mono',monospace;letter-spacing:.02em;}
+
+  .divmarker{display:flex;align-items:center;justify-content:center;font-family:'IBM Plex Mono',monospace;font-weight:700;color:#04211e;border:2px solid #0b121b;box-shadow:0 1px 4px rgba(0,0,0,.5);}
+  .divmarker.olt{background:#0b121b;color:var(--teal);border-color:var(--teal);border-radius:6px;font-size:8px;}
+  .divmarker.pole{background:var(--text-2);border-radius:50%;}
+  .divmarker.nap{border-radius:50%;font-size:9px;color:#08110a;}
+  .divmarker.drop{border-radius:2px;font-size:8px;color:#08110a;}
+  .leaflet-tooltip.ftth-label{
+    background:rgba(11,18,27,.85);border:1px solid var(--border);color:var(--text-0);
+    font-family:'IBM Plex Mono',monospace;font-size:10px;padding:2px 6px;border-radius:4px;box-shadow:none;
+  }
+  .leaflet-tooltip.ftth-label:before{display:none;}
+
+  .map-fab-row{position:absolute;top:60px;right:12px;z-index:800;display:flex;flex-direction:column;gap:6px;}
+  .fab{
+    width:34px;height:34px;background:var(--bg-1);border:1px solid var(--border);border-radius:8px;
+    display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--text-1);font-size:14px;
+  }
+  .fab:hover{color:var(--teal);border-color:var(--teal);}
+
+  .leaflet-control-layers{background:var(--bg-1);color:var(--text-0);border:1px solid var(--border);border-radius:8px;box-shadow:none;font-size:12px;}
+  .leaflet-control-layers-expanded{padding:8px 10px;}
+  .leaflet-control-layers-toggle{background-color:var(--bg-1);border-radius:8px;}
+  .toast{
+    position:absolute;bottom:18px;left:50%;transform:translateX(-50%);background:var(--bg-1);
+    border:1px solid var(--teal);color:var(--text-0);padding:9px 16px;border-radius:20px;font-size:12px;
+    z-index:1300;opacity:0;transition:opacity .25s;pointer-events:none;box-shadow:0 4px 20px rgba(0,0,0,.4);
+  }
+  .toast.show{opacity:1;}
+
+  .ratio-readout{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text-1);background:var(--bg-1);border:1px solid var(--border);border-radius:6px;padding:7px 9px;line-height:1.7;}
+  .ratio-readout b{color:var(--text-0);}
+  .loss-details{background:var(--bg-2);border:1px solid var(--border);border-radius:8px;padding:9px 10px;margin-bottom:14px;}
+  .loss-details summary{cursor:pointer;font-size:11.5px;color:var(--text-1);}
+  .loss-table{width:100%;border-collapse:collapse;margin-top:8px;font-size:10.5px;font-family:'IBM Plex Mono',monospace;}
+  .loss-table th,.loss-table td{border-bottom:1px solid var(--border-soft);padding:5px 3px;text-align:left;}
+  .loss-table th{color:var(--text-2);font-weight:500;}
+  .loss-note{font-size:10px;color:var(--text-2);margin-top:6px;line-height:1.4;}
+  .sidebar-close{display:none;}
+
+  @media (max-width:760px){
+    .hdr{padding:0 8px;gap:6px;}
+    .brand-sub{display:none;}
+    .hdr-title{display:none;}
+    .hbtn span.full-label{display:none;}
+    .menu-toggle{
+      display:flex;align-items:center;justify-content:center;width:34px;height:34px;
+      background:var(--bg-2);border:1px solid var(--border);border-radius:7px;color:var(--text-0);cursor:pointer;font-size:15px;
+    }
+    .sidebar{
+      position:absolute;top:0;left:0;bottom:0;width:86vw;max-width:340px;
+      transform:translateX(-100%);transition:transform .22s ease;box-shadow:8px 0 24px rgba(0,0,0,.5);
+    }
+    .sidebar.open{transform:translateX(0);}
+    .sidebar-close{
+      display:flex;position:absolute;top:8px;right:8px;width:28px;height:28px;align-items:center;justify-content:center;
+      background:var(--bg-2);border:1px solid var(--border);border-radius:6px;color:var(--text-1);cursor:pointer;z-index:10;
+    }
+    .sidebar-backdrop{position:absolute;inset:0;background:rgba(0,0,0,.4);z-index:850;display:none;}
+    .sidebar-backdrop.show{display:block;}
+    .hbtn{padding:7px 8px;font-size:0;width:34px;display:flex;align-items:center;justify-content:center;}
+    .hbtn:before{font-size:14px;}
+    .hbtn#btnNewLbl:before{content:'＋';}
+    .hbtn#btnSaveLbl:before{content:'💾';}
+    .hbtn#btnCsvLbl:before{content:'⇩';}
+    .view-tab{padding:6px 9px;font-size:10.5px;}
+    .topo-side{width:100%;flex:0 0 auto;max-height:38vh;border-right:none;border-bottom:1px solid var(--border);}
+    .topo-layout{flex-direction:column;}
+    .status-footer{gap:10px;padding:0 8px;overflow-x:auto;}
+    .status-footer .sf-item span.lbl-full{display:none;}
+  }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <div class="hdr">
+    <div class="menu-toggle" id="menuToggle">☰</div>
+    <div class="brand"><div class="bolt">F</div><div><div>FTTH Planner</div><div class="brand-sub">Local network design</div></div></div>
+    <div class="hdr-title" id="projectTitle">Untitled FTTH Project</div>
+    <div class="view-tabs">
+      <button class="view-tab active" data-view="map">Map</button>
+      <button class="view-tab" data-view="topo">Topology</button>
+    </div>
+    <div class="hdr-spacer"></div>
+    <div class="hdr-status" id="hdrStatus">Ready</div>
+    <button class="hbtn" id="btnNew"><span class="full-label">New</span></button>
+    <button class="hbtn" id="btnSave"><span class="full-label">Save</span></button>
+    <button class="hbtn" id="btnCsv"><span class="full-label">Export CSV</span></button>
+  </div>
+
+  <div class="main">
+    <div class="sidebar-backdrop" id="backdrop"></div>
+    <div class="sidebar" id="sidebar">
+      <div class="sidebar-close" id="sidebarClose">✕</div>
+      <div class="tabs">
+        <div class="tab active" data-tab="build">Build</div>
+        <div class="tab" data-tab="inspector">Inspector</div>
+        <div class="tab" data-tab="overview">Overview</div>
+      </div>
+
+      <!-- BUILD TAB -->
+      <div class="tab-body" id="tab-build">
+        <p class="panel-h">Planning tools</p>
+        <p class="panel-sub">Select a tool, then tap the map to place it.</p>
+        <div class="tool-grid">
+          <button class="tool-btn active" data-tool="select"><span class="ic" style="background:var(--text-2)">↖</span>Select</button>
+          <button class="tool-btn" data-tool="olt"><span class="ic" style="background:var(--teal)">O</span>Add OLT</button>
+          <button class="tool-btn" data-tool="pole"><span class="ic" style="background:var(--text-1)">P</span>Add pole</button>
+          <button class="tool-btn" data-tool="nap"><span class="ic" style="background:var(--amber)">N</span>Add NAP</button>
+          <button class="tool-btn" data-tool="splitter"><span class="ic" style="background:#38bdf8">S</span>Add FBT splitter</button>
+          <button class="tool-btn" data-tool="cassette"><span class="ic" style="background:#ec4899">C</span>Add cassette</button>
+          <button class="tool-btn" data-tool="drop"><span class="ic" style="background:var(--violet)">D</span>Customer drop</button>
+          <button class="tool-btn full" data-tool="cable">⌁ Draw cable route</button>
+        </div>
+
+        <div id="buildRatioBox" style="display:none;background:var(--bg-2);border:1px solid var(--teal);border-radius:8px;padding:10px;margin-bottom:14px;">
+          <div id="buildFbtWrap" style="display:none;">
+            <div class="field-row" style="margin-bottom:8px;">
+              <label style="color:var(--teal);">FBT Splitter Ratio (default para sa i-place)</label>
+              <select id="buildFbtRatio"></select>
+            </div>
+            <div class="field-row" style="margin-bottom:8px;">
+              <label>Actual input sa main line (dBm) - optional</label>
+              <input type="number" id="buildFbtInput" step="0.1" placeholder="+5 (default)">
+            </div>
+            <div class="ratio-readout" id="buildFbtReadout"></div>
+            <div class="field-row" style="margin:8px 0 0;">
+              <label>Output Leg Mode</label>
+              <select id="buildFbtPort">
+                <option value="tap">Left leg - Tap / Drop</option>
+                <option value="thru">Right leg - Thru / Express</option>
+              </select>
+            </div>
+          </div>
+          <div id="buildCasWrap" style="display:none;">
+            <div class="field-row" style="margin-bottom:8px;">
+              <label style="color:#ec4899;">Cassette 1x8 Ratio</label>
+              <select id="buildCasRatio"></select>
+            </div>
+            <div class="ratio-readout" id="buildCasReadout"></div>
+            <div class="field-row" id="buildCasPortWrap" style="display:none;margin:8px 0 0;">
+              <label>Output Leg Mode</label>
+              <select id="buildCasPort">
+                <option value="tap">Tap / Drop leg</option>
+                <option value="thru">Through / Express leg</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div id="lossTableWrap"></div>
+
+        <div class="hint-box" id="drawHint">
+          <span id="drawHintText">Tap a start node (OLT / pole / NAP)…</span>
+          <button id="cancelDraw">Cancel</button>
+        </div>
+
+        <p class="panel-h">Optical settings</p>
+        <p class="panel-sub">Applied when computing the fiber budget.</p>
+        <div class="field-row-2">
+          <div class="field-row"><label>OLT Tx (dBm)</label><input type="number" id="setTx" step="0.1" value="4"></div>
+          <div class="field-row"><label>Fiber loss (dB/km)</label><input type="number" id="setFiber" step="0.01" value="0.35"></div>
+        </div>
+        <div class="field-row-2">
+          <div class="field-row"><label>Connector loss (dB)</label><input type="number" id="setConn" step="0.1" value="0.3"></div>
+          <div class="field-row"><label>ONT sensitivity (dBm)</label><input type="number" id="setMinRx" step="0.5" value="-28"></div>
+        </div>
+        <div class="field-row"><label>Warn margin above sensitivity (dB)</label><input type="number" id="setMargin" step="0.5" value="3"></div>
+      </div>
+
+      <!-- INSPECTOR TAB -->
+      <div class="tab-body" id="tab-inspector" style="display:none;">
+        <div id="inspectorContent">
+          <div class="inspector-empty"><div class="ic-big">◎</div>Tap a node or cable on the map<br>to inspect and edit it.</div>
+        </div>
+      </div>
+
+      <!-- OVERVIEW TAB -->
+      <div class="tab-body" id="tab-overview" style="display:none;">
+        <p class="panel-h">Network summary</p>
+        <div class="stat-grid" id="statGrid"></div>
+        <div id="objectList"></div>
+      </div>
+    </div>
+
+    <div class="map-wrap">
+      <div id="map"></div>
+      <div class="map-fab-row" id="mapFabRow">
+        <div class="fab" id="fabFit" title="Fit to network">⤢</div>
+        <div class="fab" id="fabLocate" title="Center on my area">◎</div>
+      </div>
+
+      <div id="topoContainer">
+        <div class="topo-layout">
+          <div class="topo-side" id="topoSide"></div>
+          <div class="topo-main">
+            <div class="topo-panel-hdr">
+              <div class="topo-panel-title">Network Topology</div>
+              <div class="live-badge"><span class="d"></span>Live</div>
+              <div class="topo-panel-meta" id="topoMeta">Not refreshed yet</div>
+              <button class="topo-tool" id="topoRefresh">↻ Refresh</button>
+              <button class="topo-tool" id="topoFocus">⤢ Fullscreen</button>
+            </div>
+            <div class="topo-canvas" id="topoCanvas"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="toast" id="toast"></div>
+    </div>
+  </div>
+
+  <div class="status-footer">
+    <div class="sf-item"><span class="sf-dot" id="sfSystemDot"></span><span class="lbl-full">System </span>Online</div>
+    <div class="sf-item"><span class="sf-dot" id="sfStorageDot"></span><span class="lbl-full">Storage </span><span id="sfStorageTxt">—</span></div>
+    <div class="sf-item"><span class="lbl-full">Optical model:</span> GPON</div>
+    <div class="sf-spacer"></div>
+    <div class="sf-item sf-brand">FTTH Planner · Local build</div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+(function(){
+  "use strict";
+
+  /* ---------- STATE ---------- */
+  var state = {
+    nodes: {},      // id -> {id,type,name,lat,lng,notes,txDbm,splitRatio,customer}
+    cables: {},     // id -> {id,aId,bId,points:[[lat,lng]...],lengthKm}
+    counters: {olt:0, pole:0, nap:0, splitter:0, cassette:0, drop:0, cable:0},
+  };
+  var settings = { txDbm:4, fiberLoss:0.35, connLoss:0.3, minRx:-28, margin:3 };
+
+  var CENTER = [10.0308292, 123.2332719]; // fallback center
+  var activeTool = 'select';
+  var selectedId = null;      // selected node or cable id (prefixed)
+  var drawState = null;       // {startId, points:[[lat,lng]]}
+  var markers = {};           // nodeId -> leaflet marker
+  var cableLines = {};        // cableId -> leaflet polyline
+  var previewLine = null;
+  var map, layerGroup, baseLayers;
+  var viewMode = 'map';       // 'map' | 'topo'
+  var selectedTopoOlt = null;
+  var lastTopoRefresh = null;
+
+  var SPLIT_LOSS = {2:3.7,4:7.3,8:10.6,16:14.0,32:17.5,64:21.5};
+
+  // Standard insertion loss table (Cassette / FBT coupler). tap = gamay nga %, thru = dako nga %.
+  // Numeric values (used in the budget) take the higher end of each range to stay conservative.
+  var COUPLER_TABLE = {
+    '50/50': {tap:3.4,  thru:3.4, tapTxt:'~3.2-3.4',   thruTxt:'~3.2-3.4'},
+    '40/60': {tap:4.3,  thru:2.5, tapTxt:'~4.3',       thruTxt:'~2.5'},
+    '30/70': {tap:5.5,  thru:1.8, tapTxt:'~5.5',       thruTxt:'~1.8'},
+    '20/80': {tap:7.3,  thru:1.2, tapTxt:'~7.3',       thruTxt:'~1.2'},
+    '10/90': {tap:10.5, thru:0.7, tapTxt:'~10.5',      thruTxt:'~0.7'},
+    '2/98':  {tap:18.0, thru:0.3, tapTxt:'~17.5-18.0', thruTxt:'~0.2-0.3'}
+  };
+  // FBT splitter: LEFT (gamay %) / RIGHT (dako %) loss in dB. tap = LEFT, thru = RIGHT.
+  var FBT_RATIOS = {
+    '50/50': {tap:3.1,  thru:3.1},
+    '40/60': {tap:4.1,  thru:2.3},
+    '30/70': {tap:5.3,  thru:1.6},
+    '20/80': {tap:7.0,  thru:1.0},
+    '10/90': {tap:10.2, thru:0.5},
+    '2/98':  {tap:17.2, thru:0.2}
+  };
+  Object.keys(FBT_RATIOS).forEach(function(k){
+    FBT_RATIOS[k].tapTxt = '~' + FBT_RATIOS[k].tap.toFixed(1);
+    FBT_RATIOS[k].thruTxt = '~' + FBT_RATIOS[k].thru.toFixed(1);
+  });
+  // Cassette 1x8: equal split (1:8) or unequal tap/thru ratio from the same table
+  var CASSETTE_RATIOS = {'1:8': {tap:10.6, thru:10.6, tapTxt:'10.6', thruTxt:'10.6'}};
+  Object.keys(COUPLER_TABLE).forEach(function(k){ CASSETTE_RATIOS[k] = COUPLER_TABLE[k]; });
+
+  function getFbt(n){ return FBT_RATIOS[n.fbtRatio] || FBT_RATIOS['50/50']; }
+  function getCas(n){ return CASSETTE_RATIOS[n.cassetteRatio] || CASSETTE_RATIOS['1:8']; }
+
+  function getSplitterLoss(n, isThru){
+    if(!n) return 0;
+    if(n.type === 'nap') return n.splitRatio ? (SPLIT_LOSS[n.splitRatio] || 0) : 0;
+    if(n.type === 'splitter'){ var r = getFbt(n); return isThru ? r.thru : r.tap; }
+    if(n.type === 'cassette'){ var c = getCas(n); return isThru ? c.thru : c.tap; }
+    return 0;
+  }
+
+  function formatSplitLabel(n){
+    if(n.type === 'nap') return n.splitRatio ? ('1:' + n.splitRatio) : 'passthrough';
+    if(n.type === 'splitter') return (FBT_RATIOS[n.fbtRatio] ? n.fbtRatio : '50/50') + (n.portMode === 'thru' ? ' (Thru)' : ' (Tap)');
+    if(n.type === 'cassette'){
+      var cr = CASSETTE_RATIOS[n.cassetteRatio] ? n.cassetteRatio : '1:8';
+      if(cr === '1:8') return '1:8 (Equal)';
+      return cr + (n.portMode === 'thru' ? ' (Thru)' : ' (Tap)');
+    }
+    return '';
+  }
+
+  function fmtDbm(v){ return (v >= 0 ? '+' : '') + v.toFixed(1); }
+  // Actual Input (dBm) - Loss (dB) = Output Reading (dBm). Default input = +5 dBm (used by the reference tables)
+  function legReadingTxt(loss, input){
+    var base = (typeof input === 'number' && !isNaN(input)) ? input : 5;
+    return fmtDbm(base - loss) + ' dBm';
+  }
+
+  // "ratio = dB" readout shown under the ratio selectors
+  function ratioReadoutHtml(r, isEqual, mode, kind, input){
+    if(isEqual) return '1x8 Equal split: <b>' + r.tap.toFixed(1) + ' dB</b> matag port';
+    var t = (mode === 'thru');
+    if(kind === 'fbt'){
+      var inp = (typeof input === 'number' && !isNaN(input)) ? input : 5;
+      return 'Input <b>' + fmtDbm(inp) + ' dBm</b> &minus; Loss = Output<br>' +
+        'Left leg (gamay nga %): <b>' + r.tap.toFixed(1) + ' dB</b> &rarr; <b>' + legReadingTxt(r.tap, inp) + '</b>' + (!t ? ' &#9664; gigamit' : '') +
+        '<br>Right leg (dako nga %): <b>' + r.thru.toFixed(1) + ' dB</b> &rarr; <b>' + legReadingTxt(r.thru, inp) + '</b>' + (t ? ' &#9664; gigamit' : '');
+    }
+    return 'Tap leg (gamay nga %): <b>' + r.tap.toFixed(1) + ' dB</b>' + (!t ? ' &#9664; gigamit' : '') +
+      '<br>Thru leg (dako nga %): <b>' + r.thru.toFixed(1) + ' dB</b>' + (t ? ' &#9664; gigamit' : '');
+  }
+
+  // which input reading to use for an FBT node: typed value > budget-computed > +5 default
+  function fbtInputFor(n, tr){
+    if(typeof n.inputDbm === 'number' && !isNaN(n.inputDbm)) return {inp:n.inputDbm, src:'imong gi-type'};
+    var b = nodeBudget(n, tr);
+    if(b) return {inp: b.rx + getSplitterLoss(n, n.portMode === 'thru'), src:'gikan sa budget (OLT padulong dinhi)'};
+    return {inp:5, src:'default +5 dBm (wala pa konektado)'};
+  }
+
+  function lossTableHtml(){
+    var casRows = Object.keys(COUPLER_TABLE).map(function(k){
+      var r = COUPLER_TABLE[k];
+      return '<tr><td>'+k+'</td><td>'+r.tapTxt+' dB</td><td>'+r.thruTxt+' dB</td></tr>';
+    }).join('');
+    var fbtRows = Object.keys(FBT_RATIOS).map(function(k){
+      var r = FBT_RATIOS[k];
+      return '<tr><td>'+k+'</td><td>'+r.tapTxt+'</td><td>'+r.thruTxt+'</td><td>'+legReadingTxt(r.tap)+'</td><td>'+legReadingTxt(r.thru)+'</td></tr>';
+    }).join('');
+    return '<details class="loss-details"><summary>FBT Splitter Loss Table (Left / Right)</summary>' +
+      '<table class="loss-table"><tr><th>Left/Right</th><th>L dB</th><th>R dB</th><th>L @+5</th><th>R @+5</th></tr>' + fbtRows + '</table>' +
+      '<div class="loss-note">Left = gamay nga %, Right = dako nga %. Ang reading kay sa +5 dBm nga input.</div></details>' +
+      '<details class="loss-details"><summary>Cassette Insertion Loss Table (Tap / Thru)</summary>' +
+      '<table class="loss-table"><tr><th>Split ratio</th><th>Tap (gamay %)</th><th>Thru (dako %)</th></tr>' + casRows + '</table>' +
+      '<div class="loss-note">Sa budget, gigamit ang taas nga bahin sa range (conservative). Ang 1:8 equal kay 10.6 dB matag port.</div></details>';
+  }
+
+  var PALETTE = ['#17c3b2','#f2a93b','#8b7cf6','#5aa9ff','#ef5b6f','#3ecf7e'];
+
+  function uid(prefix){ return prefix + '_' + Math.random().toString(36).slice(2,9); }
+
+  /* ---------- PERSISTENCE ---------- */
+  // Prefers the Claude artifact storage bridge when present (window.storage);
+  // falls back to the browser's own localStorage when running standalone
+  // (GitHub Pages, installed PWA, or any plain web host).
+  var saveTimer = null;
+  var storageMode = 'none'; // 'bridge' | 'local' | 'none'
+  var storageOK = false;
+  (function detectStorage(){
+    if(typeof window.storage !== 'undefined' && window.storage && typeof window.storage.set === 'function'){
+      storageMode = 'bridge'; storageOK = true; return;
+    }
+    try{
+      var testKey = '__ftth_test__';
+      window.localStorage.setItem(testKey, '1');
+      window.localStorage.removeItem(testKey);
+      storageMode = 'local'; storageOK = true;
+    }catch(e){ storageMode = 'none'; storageOK = false; }
+  })();
+  var warnedStorage = false;
+  function scheduleSave(){
+    if(!storageOK) return;
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(function(){ persist(false); }, 700);
+  }
+  async function persist(showToast){
+    if(!storageOK){
+      if(showToast) toast('Storage isn\'t available in this browser — your work stays on screen until you reload.');
+      return;
+    }
+    try{
+      var payload = JSON.stringify({state:state, settings:settings});
+      if(storageMode==='bridge'){ await window.storage.set('ftth-project', payload, false); }
+      else { window.localStorage.setItem('ftth-project', payload); }
+      if(showToast) toast('Project saved');
+    }catch(e){
+      if(!warnedStorage){ warnedStorage = true; console.warn('ftth-planner: storage unavailable, continuing without autosave'); }
+      if(showToast) toast('Could not save — storage is unavailable here');
+    }
+  }
+  async function loadProject(){
+    if(!storageOK) return false;
+    try{
+      var raw = null;
+      if(storageMode==='bridge'){
+        var res = await window.storage.get('ftth-project', false);
+        raw = res ? res.value : null;
+      } else {
+        raw = window.localStorage.getItem('ftth-project');
+      }
+      if(raw){
+        var data = JSON.parse(raw);
+        if(data.state){ state = data.state; }
+        if(data.settings){ settings = data.settings; }
+        return true;
+      }
+    }catch(e){ /* nothing saved yet, or storage unavailable */ }
+    return false;
+  }
+
+  /* ---------- MAP INIT ---------- */
+  function initMap(){
+    map = L.map('map', {zoomControl:false, attributionControl:true}).setView(CENTER, 15);
+    L.control.zoom({position:'bottomright'}).addTo(map);
+    var osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom:20, maxNativeZoom:19, attribution:'&copy; OpenStreetMap contributors'
+    });
+    var sat = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+      maxZoom:20, maxNativeZoom:19, attribution:'Tiles &copy; Esri &mdash; Maxar, Earthstar Geographics, GIS User Community'
+    });
+    baseLayers = {'OSM Street': osm, 'Esri Satellite': sat};
+    (settings.baseLayer === 'Esri Satellite' ? sat : osm).addTo(map);
+    L.control.layers(baseLayers, null, {position:'topright', collapsed:true}).addTo(map);
+    map.on('baselayerchange', function(e){ settings.baseLayer = e.name; scheduleSave(); });
+    layerGroup = L.layerGroup().addTo(map);
+
+    map.on('click', onMapClick);
+  }
+
+  function onMapClick(e){
+    if(activeTool === 'select'){
+      if(drawState){ /* ignore */ }
+      return;
+    }
+    if(activeTool === 'olt' || activeTool === 'pole' || activeTool === 'nap' || activeTool === 'splitter' || activeTool === 'cassette' || activeTool === 'drop'){
+      addNode(activeTool, e.latlng.lat, e.latlng.lng);
+      return;
+    }
+    if(activeTool === 'cable'){
+      // clicking empty map space while drawing = add a waypoint (bend, e.g. a pole run)
+      if(drawState){
+        drawState.points.push([e.latlng.lat, e.latlng.lng]);
+        updatePreview(e.latlng);
+        updateDrawHint();
+      }
+      return;
+    }
+  }
+
+  /* ---------- NODES ---------- */
+  function addNode(type, lat, lng){
+    state.counters[type]++;
+    var num = String(state.counters[type]).padStart(2,'0');
+    var prefixMap = {olt:'OLT', pole:'POLE', nap:'NAP', splitter:'FBT', cassette:'CST', drop:'DROP'};
+    var id = uid('n');
+    var node = {
+      id:id, type:type, name: prefixMap[type] + '-' + num,
+      lat:lat, lng:lng, notes:'',
+      txDbm: type==='olt' ? settings.txDbm : undefined,
+      splitRatio: type==='nap' ? 8 : undefined,
+      fbtRatio: type==='splitter' ? (document.getElementById('buildFbtRatio') && document.getElementById('buildFbtRatio').value ? document.getElementById('buildFbtRatio').value : '50/50') : undefined,
+      cassetteRatio: type==='cassette' ? (document.getElementById('buildCasRatio') && document.getElementById('buildCasRatio').value ? document.getElementById('buildCasRatio').value : '1:8') : undefined,
+      portMode: type==='splitter' ? (document.getElementById('buildFbtPort') ? document.getElementById('buildFbtPort').value : 'tap') : (type==='cassette' ? (document.getElementById('buildCasPort') ? document.getElementById('buildCasPort').value : 'tap') : undefined),
+      customer: type==='drop' ? '' : undefined,
+    };
+    if(type==='splitter'){
+      var ivEl = document.getElementById('buildFbtInput');
+      if(ivEl && ivEl.value !== '' && !isNaN(parseFloat(ivEl.value))) node.inputDbm = parseFloat(ivEl.value);
+    }
+    state.nodes[id] = node;
+    renderAll();
+    scheduleSave();
+    selectObject('node', id);
+    toast(node.name + ' placed');
+  }
+
+  function deleteNode(id){
+    // delete attached cables first
+    Object.keys(state.cables).forEach(function(cid){
+      var c = state.cables[cid];
+      if(c.aId === id || c.bId === id) delete state.cables[cid];
+    });
+    delete state.nodes[id];
+    if(selectedId === 'node:'+id) clearSelection();
+    renderAll();
+    scheduleSave();
+  }
+
+  /* ---------- CABLES ---------- */
+  function nodeAt(latlng, thresholdMeters){
+    thresholdMeters = thresholdMeters || 9999999;
+    var best=null,bestD=Infinity;
+    Object.values(state.nodes).forEach(function(n){
+      var d = map.distance(latlng, L.latLng(n.lat,n.lng));
+      if(d<bestD){bestD=d; best=n;}
+    });
+    return best;
+  }
+
+  function markerClicked(node){
+    if(activeTool === 'cable'){
+      handleCableNodeClick(node);
+      return;
+    }
+    activeTool==='select';
+    selectObject('node', node.id);
+  }
+
+  function handleCableNodeClick(node){
+    if(!drawState){
+      drawState = {startId: node.id, points:[[node.lat,node.lng]]};
+      updateDrawHint();
+      toast('Start: ' + node.name + ' — tap poles along the route, then tap the end node');
+    } else {
+      if(node.id === drawState.startId){ toast('Pick a different end node'); return; }
+      drawState.points.push([node.lat, node.lng]);
+      finishCable(drawState.startId, node.id, drawState.points);
+      cancelDraw();
+    }
+  }
+
+  function finishCable(aId, bId, points){
+    var len = 0;
+    for(var i=1;i<points.length;i++){
+      len += map.distance(L.latLng(points[i-1]), L.latLng(points[i]));
+    }
+    var id = uid('c');
+    state.cables[id] = {id:id, aId:aId, bId:bId, points:points.slice(), lengthKm: len/1000};
+    renderAll();
+    scheduleSave();
+    toast('Cable route added — ' + (len/1000).toFixed(2) + ' km');
+  }
+
+  function cancelDraw(){
+    drawState = null;
+    if(previewLine){ map.removeLayer(previewLine); previewLine = null; }
+    updateDrawHint();
+  }
+
+  function updatePreview(cursorLatLng){
+    if(previewLine){ map.removeLayer(previewLine); }
+    if(!drawState) return;
+    var pts = drawState.points.slice();
+    if(cursorLatLng) pts.push([cursorLatLng.lat, cursorLatLng.lng]);
+    previewLine = L.polyline(pts, {color:'#17c3b2', weight:2, dashArray:'5,5', opacity:.8}).addTo(map);
+  }
+
+  function updateDrawHint(){
+    var box = document.getElementById('drawHint');
+    var txt = document.getElementById('drawHintText');
+    if(!drawState){ box.classList.remove('show'); return; }
+    box.classList.add('show');
+    var wp = drawState.points.length - 1;
+    txt.textContent = 'Route from ' + (state.nodes[drawState.startId]?state.nodes[drawState.startId].name:'?') +
+      ' — ' + wp + ' waypoint' + (wp===1?'':'s') + '. Tap the end node to finish.';
+  }
+
+  function deleteCable(id){
+    delete state.cables[id];
+    if(selectedId === 'cable:'+id) clearSelection();
+    renderAll();
+    scheduleSave();
+  }
+
+  /* ---------- OPTICAL GRAPH / TRACE ---------- */
+  function buildGraph(){
+    var adj = {}; // nodeId -> [{to, cableId, lengthKm}]
+    Object.values(state.nodes).forEach(function(n){ adj[n.id] = []; });
+    Object.values(state.cables).forEach(function(c){
+      if(!adj[c.aId] || !adj[c.bId]) return;
+      adj[c.aId].push({to:c.bId, cableId:c.id, lengthKm:c.lengthKm});
+      adj[c.bId].push({to:c.aId, cableId:c.id, lengthKm:c.lengthKm});
+    });
+    return adj;
+  }
+
+  // returns {result: nodeId -> {distKm,hops,oltId,color}, cableColor: cableId -> color, oltTraces: oltId -> {parent}}
+  function computeTrace(){
+    var adj = buildGraph();
+    var result = {};
+    var treeCableColor = {};
+    var oltTraces = {};
+    var olts = Object.values(state.nodes).filter(function(n){return n.type==='olt';});
+
+    olts.forEach(function(olt, idx){
+      var color = PALETTE[idx % PALETTE.length];
+      var dist = {}; dist[olt.id] = 0;
+      var hops = {}; hops[olt.id] = 0;
+      var parent = {}; parent[olt.id] = null;
+      var visited = {};
+      var pq = [{id:olt.id, d:0}];
+      while(pq.length){
+        pq.sort(function(a,b){return a.d-b.d;});
+        var cur = pq.shift();
+        if(visited[cur.id]) continue;
+        visited[cur.id] = true;
+        (adj[cur.id]||[]).forEach(function(edge){
+          var nd = dist[cur.id] + edge.lengthKm;
+          if(dist[edge.to] === undefined || nd < dist[edge.to]){
+            dist[edge.to] = nd;
+            hops[edge.to] = hops[cur.id] + 1;
+            parent[edge.to] = cur.id;
+            pq.push({id:edge.to, d:nd});
+            if(!(treeCableColor[edge.cableId])) treeCableColor[edge.cableId] = color;
+          }
+        });
+      }
+      oltTraces[olt.id] = {dist:dist, hops:hops, parent:parent, color:color};
+      Object.keys(dist).forEach(function(nid){
+        if(nid === olt.id) return;
+        if(!result[nid] || dist[nid] < result[nid].distKm){
+          result[nid] = {distKm:dist[nid], hops:hops[nid], oltId:olt.id, color:color};
+        }
+      });
+    });
+    return {result:result, cableColor:treeCableColor, oltTraces:oltTraces};
+  }
+
+  // walk the winning path from OLT to nodeId and sum splitter/cassette/NAP split losses along the way
+  function pathSplitLoss(nodeId, oltId, oltTraces){
+    var trc = oltTraces[oltId];
+    if(!trc) return {loss:0, stages:[]};
+    var chain = [];
+    var cur = nodeId;
+    var guard = 0;
+    while(cur !== null && cur !== undefined && guard++ < 500){
+      chain.push(cur);
+      if(cur === oltId) break;
+      cur = trc.parent[cur];
+    }
+    chain.reverse();
+    var loss = 0, stages = [];
+    chain.forEach(function(id){
+      var n = state.nodes[id];
+      if(!n) return;
+      if(n.type==='nap' || n.type==='splitter' || n.type==='cassette'){
+        var isThru = (n.portMode === 'thru');
+        var l = getSplitterLoss(n, isThru);
+        if(l > 0){
+          loss += l;
+          stages.push({name:n.name, type:n.type, ratio:formatSplitLabel(n), loss:l});
+        }
+      }
+    });
+    return {loss:loss, stages:stages};
+  }
+
+  // generic optical readout for any splitting/termination node: nap, splitter, cassette
+  function nodeBudget(node, trace){
+    var r = trace.result[node.id];
+    if(!r) return null;
+    var olt = state.nodes[r.oltId];
+    var tx = (olt && olt.txDbm!==undefined) ? olt.txDbm : settings.txDbm;
+    var sp = pathSplitLoss(node.id, r.oltId, trace.oltTraces);
+    var loss = (r.distKm * settings.fiberLoss) + (r.hops * settings.connLoss) + sp.loss;
+    var rx = tx - loss;
+    var status;
+    if(node.type === 'nap'){
+      var warnThresh = settings.minRx + settings.margin;
+      status = rx >= warnThresh ? 'pass' : (rx >= settings.minRx ? 'warn' : 'fail');
+    } else {
+      status = 'info';
+    }
+    return {rx:rx, distKm:r.distKm, hops:r.hops, oltName:olt?olt.name:'?', status:status, splitLoss:sp.loss, stages:sp.stages};
+  }
+
+  /* ---------- RENDER ---------- */
+  function nodeColor(n, trace){
+    if(n.type==='olt') return '#17c3b2';
+    if(n.type==='pole') return '#6c7889';
+    if(n.type==='nap'){
+      var b = nodeBudget(n, trace);
+      if(!b) return '#6c7889';
+      if(b.status==='pass') return '#3ecf7e';
+      if(b.status==='warn') return '#f2a93b';
+      return '#ef5b6f';
+    }
+    if(n.type==='splitter'){
+      var bs = nodeBudget(n, trace);
+      return bs ? '#38bdf8' : '#6c7889';
+    }
+    if(n.type==='cassette'){
+      var bc = nodeBudget(n, trace);
+      return bc ? '#ec4899' : '#6c7889';
+    }
+    if(n.type==='drop') return '#8b7cf6';
+    return '#6c7889';
+  }
+
+  function iconFor(n, trace){
+    var color = nodeColor(n, trace);
+    var sizeMap = {olt:26, nap:20, splitter:18, cassette:18, drop:16, pole:12};
+    var labelMap = {olt:'OLT', nap:'N', splitter:'S', cassette:'C', drop:'D', pole:''};
+    var size = sizeMap[n.type] || 12;
+    var label = labelMap[n.type] || '';
+    var shape = n.type==='olt' ? '6px' : (n.type==='drop' ? '3px' : (n.type==='splitter' || n.type==='cassette' ? '4px' : '50%'));
+    var html = '<div class="divmarker" style="width:'+size+'px;height:'+size+'px;background:'+color+';border-radius:'+shape+';font-size:'+(n.type==='olt'?8:9)+'px;">'+label+'</div>';
+    return L.divIcon({html:html, className:'', iconSize:[size,size], iconAnchor:[size/2,size/2]});
+  }
+
+  function renderAll(){
+    layerGroup.clearLayers();
+    markers = {}; cableLines = {};
+    var tr = computeTrace();
+
+    // cables first (under markers)
+    Object.values(state.cables).forEach(function(c){
+      var color = tr.cableColor[c.id] || '#3a4658';
+      var dash = tr.cableColor[c.id] ? null : '4,5';
+      var line = L.polyline(c.points, {color:color, weight:3, opacity:.9, dashArray:dash}).addTo(layerGroup);
+      line.on('click', function(ev){ L.DomEvent.stopPropagation(ev); selectObject('cable', c.id); });
+      var mid = c.points[Math.floor(c.points.length/2)];
+      line.bindTooltip(c.lengthKm.toFixed(2)+' km', {permanent:true, direction:'center', className:'ftth-label', opacity:.9});
+      cableLines[c.id] = line;
+    });
+
+    // nodes
+    Object.values(state.nodes).forEach(function(n){
+      var marker = L.marker([n.lat,n.lng], {icon: iconFor(n, tr), draggable: true}).addTo(layerGroup);
+      marker.on('click', function(ev){ L.DomEvent.stopPropagation(ev); markerClicked(n); });
+      marker.on('dragend', function(){
+        var ll = marker.getLatLng();
+        n.lat = ll.lat; n.lng = ll.lng;
+        Object.values(state.cables).forEach(function(c){
+          if(c.aId === n.id) c.points[0] = [ll.lat, ll.lng];
+          if(c.bId === n.id) c.points[c.points.length-1] = [ll.lat, ll.lng];
+          if(c.aId === n.id || c.bId === n.id){
+            var len = 0;
+            for(var i=1;i<c.points.length;i++){ len += map.distance(L.latLng(c.points[i-1]), L.latLng(c.points[i])); }
+            c.lengthKm = len/1000;
+          }
+        });
+        renderAll(); scheduleSave();
+        toast(n.name + ' gibalhin');
+      });
+      marker.bindTooltip(n.name, {direction:'top', className:'ftth-label', offset:[0,-8]});
+      markers[n.id] = marker;
+    });
+
+    renderStats(tr);
+    renderObjectList(tr);
+    if(selectedId) renderInspector();
+    if(viewMode==='topo') renderTopology();
+  }
+
+  /* ---------- TOPOLOGY TREE VIEW ---------- */
+  // Collapses pole nodes into the connecting segment so the tree shows only
+  // addressable equipment (OLT, splitters, cassettes, NAPs, drops) — same
+  // shape as the reference topology tool.
+  function buildCollapsedTree(oltId){
+    var adj = buildGraph();
+    var visited = {}; visited[oltId] = true;
+    var oltNode = state.nodes[oltId];
+    var root = {id:oltId, node:oltNode, children:[], cableKm:undefined};
+
+    function walk(currentId, treeParent, accumKm){
+      (adj[currentId]||[]).forEach(function(edge){
+        if(visited[edge.to]) return;
+        visited[edge.to] = true;
+        var childNode = state.nodes[edge.to];
+        var newAccum = accumKm + edge.lengthKm;
+        if(childNode && childNode.type === 'pole'){
+          walk(edge.to, treeParent, newAccum); // transparent pass-through
+        } else {
+          var treeChild = {id:edge.to, node:childNode, children:[], cableKm:newAccum};
+          treeParent.children.push(treeChild);
+          walk(edge.to, treeChild, 0);
+        }
+      });
+    }
+    walk(oltId, root, 0);
+    return root;
+  }
+
+  function topoCardLetter(type){
+    return {olt:'OLT', nap:'N', splitter:'S', cassette:'C', drop:'D'}[type] || '?';
+  }
+  function topoTypeLabel(type){
+    return {olt:'OLT', nap:'NAP box', splitter:'FBT splitter', cassette:'Cassette', drop:'Customer drop'}[type] || type;
+  }
+
+  function buildTopoCard(n, tr){
+    var color = nodeColor(n, tr);
+    var sub = topoTypeLabel(n.type);
+    var badge = '';
+    if(n.type==='olt'){
+      badge = '<span class="topo-pill online">Online</span>';
+    } else if(n.type==='nap' || n.type==='splitter' || n.type==='cassette'){
+      sub += ' · ' + formatSplitLabel(n);
+      var b = nodeBudget(n, tr);
+      if(b){
+        var cls = n.type==='nap' ? b.status : 'info';
+        badge = '<span class="topo-pill '+cls+'">'+b.rx.toFixed(1)+' dBm</span>';
+      } else {
+        badge = '<span class="topo-pill none">No link</span>';
+      }
+    } else if(n.type==='drop'){
+      sub = n.customer ? n.customer : 'Unassigned';
+      badge = n.customer ? '<span class="topo-pill online">Connected</span>' : '<span class="topo-pill none">Planned</span>';
+    }
+    return '<div class="topo-card" data-nodeid="'+n.id+'">' +
+      '<div class="topo-ic" style="background:'+color+'22;color:'+color+';border-color:'+color+'55;">'+topoCardLetter(n.type)+'</div>' +
+      '<div class="topo-card-txt"><div class="topo-card-name">'+escapeHtml(n.name)+'</div><div class="topo-card-sub">'+escapeHtml(sub)+'</div></div>' +
+      badge + '</div>';
+  }
+
+  function renderTreeNode(treeNode, tr){
+    if(!treeNode.node) return '';
+    var card = buildTopoCard(treeNode.node, tr);
+    var childrenHtml = treeNode.children.map(function(c){
+      var label = c.cableKm!==undefined ? '<div class="topo-cable-label">⌁ '+c.cableKm.toFixed(2)+' km</div>' : '';
+      return '<div class="topo-branch">' + label + renderTreeNode(c, tr) + '</div>';
+    }).join('');
+    return '<div class="topo-node-block">' + card + (childrenHtml ? '<div class="topo-children">'+childrenHtml+'</div>' : '') + '</div>';
+  }
+
+  function renderTopology(){
+    var side = document.getElementById('topoSide');
+    var canvas = document.getElementById('topoCanvas');
+    var meta = document.getElementById('topoMeta');
+    var tr = computeTrace();
+    var olts = Object.values(state.nodes).filter(function(n){return n.type==='olt';});
+
+    if(!olts.length){
+      side.innerHTML = '<p class="topo-side-h">OLTs</p><div class="empty-note">Place an OLT on the map to see its topology tree here.</div>';
+      canvas.innerHTML = '<div class="topo-empty">No OLT placed yet.<br>Switch to Map, add an OLT, and draw cable routes to your NAPs.</div>';
+      lastTopoRefresh = new Date();
+      meta.textContent = 'Refreshed ' + lastTopoRefresh.toLocaleTimeString();
+      return;
+    }
+    if(!selectedTopoOlt || !state.nodes[selectedTopoOlt] || state.nodes[selectedTopoOlt].type!=='olt'){
+      selectedTopoOlt = olts[0].id;
+    }
+
+    // side: OLT list
+    var sideHtml = '<p class="topo-side-h">OLT list · '+olts.length+'</p>';
+    olts.forEach(function(o){
+      sideHtml += '<div class="topo-olt-chip'+(o.id===selectedTopoOlt?' active':'')+'" data-oltid="'+o.id+'">' +
+        '<span class="dot"></span><span class="nm">'+escapeHtml(o.name)+'</span></div>';
+    });
+
+    // summary for selected OLT
+    var tree = buildCollapsedTree(selectedTopoOlt);
+    var oltNode = state.nodes[selectedTopoOlt];
+    var counts = {nap:0, splitter:0, cassette:0, drop:0};
+    var kmSum = 0, weakest = null;
+    (function walkCount(t){
+      t.children.forEach(function(c){
+        if(c.cableKm!==undefined) kmSum += c.cableKm;
+        if(counts[c.node.type]!==undefined) counts[c.node.type]++;
+        if(c.node.type==='nap'){
+          var b = nodeBudget(c.node, tr);
+          if(b && (weakest===null || b.rx < weakest)) weakest = b.rx;
+        }
+        walkCount(c);
+      });
+    })(tree);
+
+    var summaryHtml = '<div class="topo-summary">' +
+      srow('Status','Online') + srow('Tx power', (oltNode.txDbm!==undefined?oltNode.txDbm:settings.txDbm)+' dBm') +
+      srow('NAP boxes', counts.nap) + srow('Splitters', counts.splitter) + srow('Cassettes', counts.cassette) +
+      srow('Customer drops', counts.drop) + srow('Route length', kmSum.toFixed(2)+' km') +
+      srow('Weakest NAP', weakest!==null ? weakest.toFixed(1)+' dBm' : '—') +
+      '</div>';
+    side.innerHTML = sideHtml + summaryHtml;
+
+    side.querySelectorAll('.topo-olt-chip').forEach(function(chip){
+      chip.addEventListener('click', function(){ selectedTopoOlt = chip.getAttribute('data-oltid'); renderTopology(); });
+    });
+
+    canvas.innerHTML = renderTreeNode(tree, tr);
+    canvas.querySelectorAll('.topo-card').forEach(function(card){
+      card.addEventListener('click', function(){
+        selectObject('node', card.getAttribute('data-nodeid'));
+        if(window.innerWidth<=760) openSidebarMobile();
+      });
+    });
+
+    lastTopoRefresh = new Date();
+    meta.textContent = 'Refreshed ' + lastTopoRefresh.toLocaleTimeString();
+  }
+  function srow(k,v){ return '<div class="topo-summary-row"><span class="k">'+k+'</span><span class="v">'+v+'</span></div>'; }
+
+  /* ---------- STATS / LIST ---------- */
+  function renderStats(tr){
+    var nodes = Object.values(state.nodes);
+    var oltCount = nodes.filter(function(n){return n.type==='olt';}).length;
+    var poleCount = nodes.filter(function(n){return n.type==='pole';}).length;
+    var napNodes = nodes.filter(function(n){return n.type==='nap';});
+    var splitterCount = nodes.filter(function(n){return n.type==='splitter';}).length;
+    var cassetteCount = nodes.filter(function(n){return n.type==='cassette';}).length;
+    var dropCount = nodes.filter(function(n){return n.type==='drop';}).length;
+    var totalKm = Object.values(state.cables).reduce(function(s,c){return s+c.lengthKm;},0);
+    var pass=0,warn=0,fail=0,none=0;
+    napNodes.forEach(function(n){
+      var b = nodeBudget(n, tr);
+      if(!b) none++; else if(b.status==='pass') pass++; else if(b.status==='warn') warn++; else fail++;
+    });
+
+    var grid = document.getElementById('statGrid');
+    grid.innerHTML =
+      stat(oltCount,'OLTs') + stat(poleCount,'Poles') +
+      stat(napNodes.length,'NAP boxes') + stat(splitterCount+cassetteCount,'Splitters / cassettes') +
+      stat(dropCount,'Customer drops') + stat(totalKm.toFixed(2),'Route km') +
+      statCls(pass,'Pass','pass') + statCls(warn+fail,'Warn / Fail', warn+fail>0?'fail':'');
+  }
+  function stat(v,l){ return '<div class="stat-card"><div class="v">'+v+'</div><div class="l">'+l+'</div></div>'; }
+  function statCls(v,l,cls){ return '<div class="stat-card '+(cls||'')+'"><div class="v">'+v+'</div><div class="l">'+l+'</div></div>'; }
+
+  function renderObjectList(tr){
+    var el = document.getElementById('objectList');
+    var groups = [
+      {type:'olt', label:'OLTs'},
+      {type:'nap', label:'NAP boxes'},
+      {type:'splitter', label:'FBT splitters'},
+      {type:'cassette', label:'Cassettes'},
+      {type:'pole', label:'Poles'},
+      {type:'drop', label:'Customer drops'},
+    ];
+    var html = '';
+    groups.forEach(function(g){
+      var items = Object.values(state.nodes).filter(function(n){return n.type===g.type;});
+      html += '<div class="obj-group-h"><span>'+g.label+'</span><span>'+items.length+'</span></div>';
+      if(!items.length){ html += '<div class="empty-note">None placed yet</div>'; return; }
+      items.forEach(function(n){
+        var color = nodeColor(n, tr);
+        var meta = '';
+        var badge = '';
+        if(n.type==='nap' || n.type==='splitter' || n.type==='cassette'){
+          var b = nodeBudget(n, tr);
+          var ratioTxt = formatSplitLabel(n);
+          meta = b ? (ratioTxt+' · '+b.distKm.toFixed(2)+'km') : ratioTxt;
+          if(n.type==='nap'){
+            badge = '<span class="badge '+(b?b.status:'none')+'">'+(b?b.rx.toFixed(1)+' dBm':'no link')+'</span>';
+          } else {
+            badge = '<span class="badge '+(b?'none':'none')+'">'+(b?b.rx.toFixed(1)+' dBm':'no link')+'</span>';
+          }
+        }
+        html += '<div class="obj-item" data-nodeid="'+n.id+'"><div class="obj-dot" style="background:'+color+'"></div>' +
+          '<div class="obj-name">'+escapeHtml(n.name)+'</div><div class="obj-meta">'+meta+'</div>'+badge+'</div>';
+      });
+    });
+    el.innerHTML = html;
+    el.querySelectorAll('.obj-item').forEach(function(item){
+      item.addEventListener('click', function(){
+        var id = item.getAttribute('data-nodeid');
+        var n = state.nodes[id];
+        if(n){ map.flyTo([n.lat,n.lng], Math.max(map.getZoom(),17)); selectObject('node', id); switchTab('inspector'); }
+      });
+    });
+  }
+
+  /* ---------- SELECTION / INSPECTOR ---------- */
+  function selectObject(kind, id){
+    selectedId = kind+':'+id;
+    renderInspector();
+    switchTab('inspector');
+    if(window.innerWidth<=760 && activeTool==='select') openSidebarMobile();
+  }
+  function clearSelection(){ selectedId = null; renderInspector(); }
+
+  function renderInspector(){
+    var host = document.getElementById('inspectorContent');
+    var ae = document.activeElement, aeId = null, sel = null;
+    try{
+      if(ae && ae.id && host.contains(ae) && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA')){
+        aeId = ae.id;
+        if(typeof ae.selectionStart === 'number') sel = [ae.selectionStart, ae.selectionEnd];
+      }
+    }catch(e){}
+    renderInspectorInner();
+    if(aeId){
+      var ne = document.getElementById(aeId);
+      if(ne && ne !== ae){
+        try{ ne.focus(); if(sel && typeof ne.setSelectionRange === 'function') ne.setSelectionRange(sel[0], sel[1]); }catch(e){}
+      }
+    }
+  }
+  function renderInspectorInner(){
+    var el = document.getElementById('inspectorContent');
+    if(!selectedId){
+      el.innerHTML = '<div class="inspector-empty"><div class="ic-big">◎</div>Tap a node or cable on the map<br>to inspect and edit it.</div>';
+      return;
+    }
+    var parts = selectedId.split(':');
+    var kind = parts[0], id = parts[1];
+
+    if(kind==='node'){
+      var n = state.nodes[id];
+      if(!n){ clearSelection(); return; }
+      var tr = computeTrace();
+      var typeLabel = {olt:'OLT',pole:'Pole',nap:'NAP box',splitter:'FBT splitter',cassette:'Cassette splitter',drop:'Customer drop'}[n.type];
+      var typeColor = nodeColor(n, tr);
+      var html = '<div class="insp-head"><span class="insp-type-badge" style="background:'+typeColor+'22;color:'+typeColor+'">'+typeLabel+'</span></div>';
+      html += fieldText('nName','Name', n.name);
+      if(n.type==='olt'){
+        html += fieldNumber('nTx','Tx power (dBm)', n.txDbm!==undefined?n.txDbm:settings.txDbm, 0.1);
+      }
+      if(n.type==='nap' || n.type==='splitter' || n.type==='cassette'){
+        if(n.type==='nap'){
+          var ratioOptions = [2,4,8,16,32,64].map(function(r){
+            return '<option value="'+r+'"'+(n.splitRatio===r?' selected':'')+'>1:'+r+'</option>';
+          }).join('');
+          ratioOptions = '<option value="0"'+(!n.splitRatio?' selected':'')+'>None (passthrough)</option>' + ratioOptions;
+          html += '<div class="field-row"><label>Onboard split ratio</label><select id="nSplit">' + ratioOptions + '</select></div>';
+        } else if(n.type==='splitter'){
+          var curFbt = FBT_RATIOS[n.fbtRatio] ? n.fbtRatio : '50/50';
+          var fbtOpts = Object.keys(FBT_RATIOS).map(function(k){
+            var info = FBT_RATIOS[k];
+            return '<option value="'+k+'"'+(curFbt===k?' selected':'')+'>'+k+' (Left: '+info.tapTxt+' dB / Right: '+info.thruTxt+' dB)</option>';
+          }).join('');
+          html += '<div class="field-row"><label>FBT Splitter Ratio</label><select id="nFbtRatio">' + fbtOpts + '</select></div>';
+          var fi = fbtInputFor(n, tr);
+          html += '<div class="field-row"><label>Actual input reading (dBm) - optional</label><input type="number" id="nInputDbm" step="0.1" placeholder="auto: ' + fmtDbm(fi.inp) + '" value="' + (typeof n.inputDbm === 'number' ? n.inputDbm : '') + '"></div>';
+          html += '<div class="ratio-readout" id="nRatioReadout" style="margin-bottom:12px;">' + ratioReadoutHtml(FBT_RATIOS[curFbt], false, n.portMode, 'fbt', fi.inp) +
+            '<br><span style="color:var(--text-2)">Input: ' + fi.src + '</span></div>';
+          var curPort = n.portMode || 'tap';
+          html += '<div class="field-row"><label>Active Output Leg</label><select id="nPortMode">' +
+            '<option value="tap"'+(curPort==='tap'?' selected':'')+'>Left leg - Tap / Drop ('+FBT_RATIOS[curFbt].tap.toFixed(1)+' dB)</option>' +
+            '<option value="thru"'+(curPort==='thru'?' selected':'')+'>Right leg - Thru / Express ('+FBT_RATIOS[curFbt].thru.toFixed(1)+' dB)</option>' +
+            '</select></div>';
+        } else if(n.type==='cassette'){
+          var curCas = CASSETTE_RATIOS[n.cassetteRatio] ? n.cassetteRatio : '1:8';
+          var casOpts = Object.keys(CASSETTE_RATIOS).map(function(k){
+            var info = CASSETTE_RATIOS[k];
+            var lbl = k === '1:8' ? '1:8 Equal (10.6 dB matag port)' : (k + ' (Tap: '+info.tapTxt+' dB / Thru: '+info.thruTxt+' dB)');
+            return '<option value="'+k+'"'+(curCas===k?' selected':'')+'>'+lbl+'</option>';
+          }).join('');
+          html += '<div class="field-row"><label>Cassette 1x8 Ratio</label><select id="nCassetteRatio">' + casOpts + '</select></div>';
+          html += '<div class="ratio-readout" style="margin-bottom:12px;">' + ratioReadoutHtml(CASSETTE_RATIOS[curCas], curCas==='1:8', n.portMode) + '</div>';
+          if(curCas !== '1:8'){
+            var curCasPort = n.portMode || 'tap';
+            html += '<div class="field-row"><label>Active Output Leg</label><select id="nPortMode">' +
+              '<option value="tap"'+(curCasPort==='tap'?' selected':'')+'>Tap / Drop leg ('+CASSETTE_RATIOS[curCas].tap.toFixed(1)+' dB)</option>' +
+              '<option value="thru"'+(curCasPort==='thru'?' selected':'')+'>Through / Express leg ('+CASSETTE_RATIOS[curCas].thru.toFixed(1)+' dB)</option>' +
+              '</select></div>';
+          }
+        }
+
+        var b = nodeBudget(n, tr);
+        if(b){
+          var col = b.status==='pass' ? '#3ecf7e' : (b.status==='warn' ? '#f2a93b' : (b.status==='fail' ? '#ef5b6f' : '#38bdf8'));
+          var stagesTxt = b.stages.length ? b.stages.map(function(s){return s.name+' ('+s.ratio+')';}).join(' → ') : 'none in path';
+          html += '<div class="db-readout"><div class="big" style="color:'+col+'">'+b.rx.toFixed(2)+' dBm</div>' +
+            '<div class="path">Via '+escapeHtml(b.oltName)+' · '+b.distKm.toFixed(2)+' km · '+b.hops+' splice(s)<br>' +
+            'Split stages in path: '+escapeHtml(stagesTxt)+' · total split loss '+b.splitLoss.toFixed(1)+' dB';
+          if(n.type==='nap'){
+            html += '<br>Status: <b style="color:'+col+'">'+b.status.toUpperCase()+'</b>';
+          }
+          html += '</div></div>';
+        } else {
+          html += '<div class="db-readout"><div class="path">No cable path to an OLT yet — draw a cable route to connect this '+typeLabel.toLowerCase()+'.</div></div>';
+        }
+      }
+      if(n.type==='drop'){
+        html += fieldText('nCustomer','Customer / subscriber', n.customer||'');
+      }
+      html += '<div class="field-row"><label>Notes</label><textarea id="nNotes">'+escapeHtml(n.notes||'')+'</textarea></div>';
+      html += '<div class="btn-row"><button class="btn-secondary" id="btnFlyTo">Center map</button><button class="btn-danger" id="btnDeleteNode">Delete</button></div>';
+      el.innerHTML = html;
+
+      bindLive('nName', function(v){ n.name=v; renderAll(); scheduleSave(); });
+      if(n.type==='olt') bindLiveNum('nTx', function(v){ n.txDbm=v; renderAll(); scheduleSave(); });
+      if(n.type==='nap') bindLiveSelect('nSplit', function(v){ n.splitRatio=parseInt(v,10)||0; renderAll(); scheduleSave(); });
+      if(n.type==='splitter'){
+        bindLiveSelect('nFbtRatio', function(v){ n.fbtRatio=v; renderAll(); scheduleSave(); });
+        var inEl = document.getElementById('nInputDbm');
+        if(inEl){
+          inEl.addEventListener('input', function(){
+            var v = parseFloat(inEl.value);
+            if(isNaN(v)) delete n.inputDbm; else n.inputDbm = v;
+            var rd = document.getElementById('nRatioReadout');
+            if(rd){
+              var fi2 = fbtInputFor(n, computeTrace());
+              rd.innerHTML = ratioReadoutHtml(getFbt(n), false, n.portMode, 'fbt', fi2.inp) + '<br><span style="color:var(--text-2)">Input: ' + fi2.src + '</span>';
+            }
+            scheduleSave();
+          });
+          inEl.addEventListener('change', function(){ renderAll(); });
+        }
+        bindLiveSelect('nPortMode', function(v){ n.portMode=v; renderAll(); scheduleSave(); });
+      }
+      if(n.type==='cassette'){
+        bindLiveSelect('nCassetteRatio', function(v){ n.cassetteRatio=v; if(v==='1:8') n.portMode='tap'; renderAll(); scheduleSave(); });
+        bindLiveSelect('nPortMode', function(v){ n.portMode=v; renderAll(); scheduleSave(); });
+      }
+      if(n.type==='drop') bindLive('nCustomer', function(v){ n.customer=v; scheduleSave(); });
+      bindLive('nNotes', function(v){ n.notes=v; scheduleSave(); });
+      document.getElementById('btnFlyTo').onclick = function(){ map.flyTo([n.lat,n.lng], Math.max(map.getZoom(),17)); };
+      document.getElementById('btnDeleteNode').onclick = function(){ deleteNode(id); };
+    }
+
+    if(kind==='cable'){
+      var c = state.cables[id];
+      if(!c){ clearSelection(); return; }
+      var a = state.nodes[c.aId], b2 = state.nodes[c.bId];
+      var html2 = '<div class="insp-head"><span class="insp-type-badge" style="background:#17c3b222;color:#17c3b2">Cable route</span></div>';
+      html2 += '<div class="field-row"><label>From</label><div style="font-size:12.5px;">'+escapeHtml(a?a.name:'—')+'</div></div>';
+      html2 += '<div class="field-row"><label>To</label><div style="font-size:12.5px;">'+escapeHtml(b2?b2.name:'—')+'</div></div>';
+      html2 += '<div class="field-row"><label>Length</label><div style="font-size:12.5px;font-family:\'IBM Plex Mono\',monospace;">'+c.lengthKm.toFixed(3)+' km</div></div>';
+      html2 += '<div class="field-row"><label>Waypoints</label><div style="font-size:12.5px;">'+(c.points.length-2>0? (c.points.length-2)+' bend point(s)':'Direct route')+'</div></div>';
+      html2 += '<div class="btn-row"><button class="btn-danger" id="btnDeleteCable">Delete cable</button></div>';
+      el.innerHTML = html2;
+      document.getElementById('btnDeleteCable').onclick = function(){ deleteCable(id); };
+    }
+  }
+
+  function fieldText(fid,label,val){
+    return '<div class="field-row"><label>'+label+'</label><input type="text" id="'+fid+'" value="'+escapeHtml(val)+'"></div>';
+  }
+  function fieldNumber(fid,label,val,step){
+    return '<div class="field-row"><label>'+label+'</label><input type="number" id="'+fid+'" value="'+val+'" step="'+(step||1)+'"></div>';
+  }
+  function bindLive(id, cb){
+    var elx = document.getElementById(id);
+    if(!elx) return;
+    elx.addEventListener('input', function(){ cb(elx.value); });
+  }
+  function bindLiveNum(id, cb){
+    var elx = document.getElementById(id);
+    if(!elx) return;
+    elx.addEventListener('input', function(){ var v=parseFloat(elx.value); if(!isNaN(v)) cb(v); });
+  }
+  function bindLiveSelect(id, cb){
+    var elx = document.getElementById(id);
+    if(!elx) return;
+    elx.addEventListener('change', function(){ cb(elx.value); });
+  }
+
+  function escapeHtml(s){
+    return String(s==null?'':s).replace(/[&<>"']/g, function(c){
+      return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+    });
+  }
+
+  /* ---------- UI WIRING ---------- */
+  function switchTab(name){
+    document.querySelectorAll('.tab').forEach(function(t){ t.classList.toggle('active', t.dataset.tab===name); });
+    ['build','inspector','overview'].forEach(function(t){
+      document.getElementById('tab-'+t).style.display = (t===name) ? 'block' : 'none';
+    });
+  }
+  document.querySelectorAll('.tab').forEach(function(t){
+    t.addEventListener('click', function(){ switchTab(t.dataset.tab); });
+  });
+
+  function populateRatioUI(){
+    var fbtSel = document.getElementById('buildFbtRatio');
+    fbtSel.innerHTML = Object.keys(FBT_RATIOS).map(function(k){
+      var r = FBT_RATIOS[k];
+      return '<option value="'+k+'">'+k+' (Left: '+r.tapTxt+' dB / Right: '+r.thruTxt+' dB)</option>';
+    }).join('');
+    var casSel = document.getElementById('buildCasRatio');
+    casSel.innerHTML = Object.keys(CASSETTE_RATIOS).map(function(k){
+      var r = CASSETTE_RATIOS[k];
+      var lbl = k === '1:8' ? '1:8 Equal (10.6 dB matag port)' : (k + ' (Tap: '+r.tapTxt+' dB / Thru: '+r.thruTxt+' dB)');
+      return '<option value="'+k+'">'+lbl+'</option>';
+    }).join('');
+    document.getElementById('lossTableWrap').innerHTML = lossTableHtml();
+    refreshBuildReadouts();
+  }
+
+  function refreshBuildReadouts(){
+    var fv = document.getElementById('buildFbtRatio').value;
+    var cv = document.getElementById('buildCasRatio').value;
+    if(FBT_RATIOS[fv]){
+      var iv = parseFloat(document.getElementById('buildFbtInput').value);
+      document.getElementById('buildFbtReadout').innerHTML = ratioReadoutHtml(FBT_RATIOS[fv], false, document.getElementById('buildFbtPort').value, 'fbt', isNaN(iv) ? 5 : iv);
+    }
+    if(CASSETTE_RATIOS[cv]){
+      document.getElementById('buildCasReadout').innerHTML = ratioReadoutHtml(CASSETTE_RATIOS[cv], cv==='1:8', document.getElementById('buildCasPort').value);
+    }
+  }
+
+  function updateBuildRatioBox(){
+    var box = document.getElementById('buildRatioBox');
+    var fbtW = document.getElementById('buildFbtWrap');
+    var casW = document.getElementById('buildCasWrap');
+    if(activeTool === 'splitter'){
+      box.style.display = 'block'; fbtW.style.display = 'block'; casW.style.display = 'none';
+    } else if(activeTool === 'cassette'){
+      box.style.display = 'block'; fbtW.style.display = 'none'; casW.style.display = 'block';
+      document.getElementById('buildCasPortWrap').style.display = (document.getElementById('buildCasRatio').value !== '1:8') ? 'block' : 'none';
+    } else {
+      box.style.display = 'none';
+    }
+    refreshBuildReadouts();
+  }
+  ['buildFbtRatio','buildFbtPort','buildCasPort'].forEach(function(id){
+    document.getElementById(id).addEventListener('change', refreshBuildReadouts);
+  });
+  document.getElementById('buildCasRatio').addEventListener('change', updateBuildRatioBox);
+  document.getElementById('buildFbtInput').addEventListener('input', refreshBuildReadouts);
+
+  document.querySelectorAll('.tool-btn').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      if(activeTool==='cable' && drawState) cancelDraw();
+      activeTool = btn.dataset.tool;
+      document.querySelectorAll('.tool-btn').forEach(function(b){ b.classList.toggle('active', b===btn); });
+      document.getElementById('map').style.cursor = activeTool==='select' ? '' : 'crosshair';
+      if(activeTool!=='cable') updateDrawHint();
+      updateBuildRatioBox();
+      if(activeTool !== 'splitter' && activeTool !== 'cassette'){
+        closeSidebarMobile();
+      } else {
+        toast('Pili una og ratio sa ubos, dayon i-tap ang mapa');
+      }
+    });
+  });
+  document.getElementById('cancelDraw').addEventListener('click', cancelDraw);
+  document.addEventListener('keydown', function(e){ if(e.key==='Escape') cancelDraw(); });
+
+  // live mouse preview for cable draw
+  document.addEventListener('DOMContentLoaded', function(){});
+
+  ['setTx','setFiber','setConn','setMinRx','setMargin'].forEach(function(id){
+    document.getElementById(id).addEventListener('input', function(){
+      var map2 = {setTx:'txDbm', setFiber:'fiberLoss', setConn:'connLoss', setMinRx:'minRx', setMargin:'margin'};
+      var v = parseFloat(document.getElementById(id).value);
+      if(!isNaN(v)){ settings[map2[id]] = v; renderAll(); scheduleSave(); }
+    });
+  });
+
+  document.getElementById('btnNew').addEventListener('click', function(){
+    if(!confirm('Start a new project? This clears the current map (unsaved changes will be lost).')) return;
+    state = {nodes:{}, cables:{}, counters:{olt:0,pole:0,nap:0,splitter:0,cassette:0,drop:0,cable:0}};
+    selectedId = null; cancelDraw(); renderAll(); persist(); toast('New project started');
+  });
+  document.getElementById('btnSave').addEventListener('click', function(){ persist(true); });
+  document.getElementById('btnCsv').addEventListener('click', exportCsv);
+
+  document.getElementById('fabFit').addEventListener('click', function(){
+    var pts = Object.values(state.nodes).map(function(n){return [n.lat,n.lng];});
+    if(pts.length<2){ if(pts.length===1) map.setView(pts[0],17); return; }
+    map.fitBounds(L.latLngBounds(pts), {padding:[40,40]});
+  });
+  document.getElementById('fabLocate').addEventListener('click', function(){ map.setView(CENTER, 15); });
+
+  // view switching (Map / Topology)
+  function switchView(v){
+    viewMode = v;
+    document.querySelectorAll('.view-tab').forEach(function(t){ t.classList.toggle('active', t.dataset.view===v); });
+    document.getElementById('map').style.display = v==='map' ? 'block' : 'none';
+    document.getElementById('mapFabRow').style.display = v==='map' ? 'flex' : 'none';
+    document.getElementById('topoContainer').style.display = v==='topo' ? 'block' : 'none';
+    if(v==='topo'){
+      renderTopology();
+      if(map) setTimeout(function(){ map.invalidateSize(); }, 50);
+    } else {
+      document.querySelector('.main').classList.remove('topo-focus');
+      if(map) setTimeout(function(){ map.invalidateSize(); }, 50);
+    }
+  }
+  document.querySelectorAll('.view-tab').forEach(function(t){
+    t.addEventListener('click', function(){ switchView(t.dataset.view); });
+  });
+  document.getElementById('topoRefresh').addEventListener('click', function(){ renderTopology(); toast('Topology refreshed'); });
+  document.getElementById('topoFocus').addEventListener('click', function(){
+    document.querySelector('.main').classList.toggle('topo-focus');
+  });
+
+  function updateFooterStatus(){
+    var storageDot = document.getElementById('sfStorageDot');
+    var storageTxt = document.getElementById('sfStorageTxt');
+    if(storageOK){
+      storageDot.classList.remove('warn');
+      storageTxt.textContent = storageMode==='bridge' ? 'Autosave on' : 'Autosave on (this device)';
+    } else {
+      storageDot.classList.add('warn');
+      storageTxt.textContent = 'Autosave unavailable';
+    }
+  }
+
+  // mobile sidebar
+  var sidebar = document.getElementById('sidebar');
+  var backdrop = document.getElementById('backdrop');
+  function openSidebarMobile(){ sidebar.classList.add('open'); backdrop.classList.add('show'); }
+  function closeSidebarMobile(){ if(window.innerWidth<=760){ sidebar.classList.remove('open'); backdrop.classList.remove('show'); } }
+  document.getElementById('menuToggle').addEventListener('click', openSidebarMobile);
+  document.getElementById('sidebarClose').addEventListener('click', closeSidebarMobile);
+  backdrop.addEventListener('click', closeSidebarMobile);
+
+  function toast(msg){
+    var t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    clearTimeout(t._h);
+    t._h = setTimeout(function(){ t.classList.remove('show'); }, 2200);
+  }
+
+  function exportCsv(){
+    var tr = computeTrace();
+    var rows = [['Name','Type','Lat','Lng','Split Ratio','OLT','Distance (km)','Splices','Rx (dBm)','Status','Notes']];
+    Object.values(state.nodes).forEach(function(n){
+      var b = (n.type==='nap' || n.type==='splitter' || n.type==='cassette') ? nodeBudget(n, tr) : null;
+      rows.push([
+        n.name, n.type, n.lat.toFixed(6), n.lng.toFixed(6),
+        (n.type==='nap'||n.type==='splitter'||n.type==='cassette') ? formatSplitLabel(n) : '', b?b.oltName:'', b?b.distKm.toFixed(3):'',
+        b?b.hops:'', b?b.rx.toFixed(2):'', b?b.status:'', (n.notes||'').replace(/\n/g,' ')
+      ]);
+    });
+    var csv = rows.map(function(r){
+      return r.map(function(v){ v=String(v); return /[",\n]/.test(v) ? '"'+v.replace(/"/g,'""')+'"' : v; }).join(',');
+    }).join('\n');
+    var blob = new Blob([csv], {type:'text/csv'});
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'ftth-network.csv';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    toast('CSV exported');
+  }
+
+  // mousemove preview while drawing cable (desktop)
+  function wireMouseMove(){
+    map.on('mousemove', function(e){
+      if(activeTool==='cable' && drawState) updatePreview(e.latlng);
+    });
+  }
+
+  /* ---------- INIT ---------- */
+  async function init(){
+    populateRatioUI();
+    initMap();
+    wireMouseMove();
+    var had = await loadProject();
+    document.getElementById('setTx').value = settings.txDbm;
+    document.getElementById('setFiber').value = settings.fiberLoss;
+    document.getElementById('setConn').value = settings.connLoss;
+    document.getElementById('setMinRx').value = settings.minRx;
+    document.getElementById('setMargin').value = settings.margin;
+    if(settings.baseLayer && baseLayers && baseLayers[settings.baseLayer] && !map.hasLayer(baseLayers[settings.baseLayer])){
+      Object.values(baseLayers).forEach(function(l){ if(map.hasLayer(l)) map.removeLayer(l); });
+      baseLayers[settings.baseLayer].addTo(map);
+    }
+    renderAll();
+    updateFooterStatus();
+    var pts = Object.values(state.nodes).map(function(n){return [n.lat,n.lng];});
+    if(pts.length){
+      if(pts.length===1) map.setView(pts[0],17);
+      else map.fitBounds(L.latLngBounds(pts), {padding:[40,40]});
+    }
+    if(had) toast('Project loaded');
+  }
+  init();
+
+  if('serviceWorker' in navigator){
+    window.addEventListener('load', function(){
+      navigator.serviceWorker.register('sw.js').catch(function(){ /* offline caching is optional */ });
+    });
+  }
+})();
+</script>
+</body>
+</html>
